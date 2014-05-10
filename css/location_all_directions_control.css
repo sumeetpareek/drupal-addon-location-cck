@@ -1,0 +1,19 @@
+/* gmap directions control*/
+.node .node-gmap-get-my-location, .node .node-gmap-get-direction {
+  float: right;
+  padding: 3px;
+  margin: 5px;
+  cursor: pointer;
+}
+.node .node-gmap-get-direction {
+  display: none;
+}
+.form-item-travel-mode {
+  float: right;
+  padding: 3px;
+  margin: 5px !important;
+}
+
+#location-cck-latitude, #location-cck-longitude, .adp-legal {
+  display:none;
+}

@@ -18,6 +18,15 @@ function location_cck_theme() {
         'instance' => NULL,
       ),
     ),
+    'location_cck_field_all_with_directions' => array(
+      'variables' => array(
+        'location' => NULL,
+        'hide' => array(),
+        'field' => NULL,
+        'instance' => NULL,
+        'formatter_settings' => NULL,
+      ),
+    ),
     'location_cck_field_map' => array(
       'variables' => array(
         'locations' => NULL,
@@ -338,6 +347,17 @@ function location_cck_field_formatter_info() {
       'label' => t('Address with map'),
       'field types' => array('location'),
     );
+    /*adding direction controls*/
+    $info['location_all_with_directions'] = array(
+      'label' => t('Address with map (with controls for directions)'),
+      'field types' => array('location'),
+      'settings' => array(
+        'get_own_location_control' => 0,
+        'get_directions_control' => 0,
+        'show_direction_panel' => 0,
+        'show_travel_modes' => 0,
+      ),
+    );
     $info['location_map'] = array(
       'label' => t('Map only'),
       'field types' => array('location'),
@@ -359,6 +379,7 @@ function location_cck_field_formatter_view($entity_type, $entity, $field, $insta
   $element = array();
 
   $settings = $field['settings']['location_settings'];
+  $formatter_settings = $display['settings'];
   $hide = (isset($settings['display']['hide'])) ? array_keys(array_filter($settings['display']['hide'])) : array();
 
   switch ($display['type']) {
@@ -380,6 +401,19 @@ function location_cck_field_formatter_view($entity_type, $entity, $field, $insta
           $element[$delta]['#hide'] = $hide;
           $element[$delta]['#field'] = $field;
           $element[$delta]['#instance'] = $instance;
+        }
+      }
+      break;
+
+    case 'location_all_with_directions':
+      foreach ($items as $delta => $item) {
+        if (!empty($item['lid']) || !empty($entity->in_preview)) {
+          $element[$delta]['#theme'] = 'location_cck_field_all_with_directions';
+          $element[$delta]['#location'] = $item;
+          $element[$delta]['#hide'] = $hide;
+          $element[$delta]['#field'] = $field;
+          $element[$delta]['#instance'] = $instance;
+          $element[$delta]['#formatter_settings'] = $formatter_settings;
         }
       }
       break;
@@ -504,6 +538,53 @@ function theme_location_cck_field_all($variables) {
 }
 
 /**
+ * Return an address and a map for an individual item,  along with the configured controls to show directions.
+ */
+function theme_location_cck_field_all_with_directions($variables) {
+  $content = theme('location', array('location' => $variables['location'], 'hide' => $variables['hide'], 'formatter_settings' => $variables['formatter_settings']));
+  /*getting node latitude and longtitude values*/
+  $content .= "<div id='location-cck-latitude'>" . $variables['location']['latitude'] . "</div>";
+  $content .= "<div id='location-cck-longitude'>" . $variables['location']['longitude'] . "</div>";
+  /*Displaying formatter settings control*/
+  if (!empty($variables['formatter_settings']['get_own_location_control'])) {
+  	$content .= '<div class="node-gmap-get-my-location">' . $variables['formatter_settings']['get_own_location_control'] . '</div>';
+  }
+  if (!empty($variables['formatter_settings']['get_directions_control'])) {
+  	$content .= '<div class="node-gmap-get-direction">' . $variables['formatter_settings']['get_directions_control'] . '</div>';
+  }
+  if (!empty($variables['formatter_settings']['show_travel_modes'])) {
+  	$content .= drupal_render(drupal_get_form('travel_mode_options_form'));
+  }
+  $content .= theme_location_cck_field_map(array('locations' => array($variables['location']), 'field' => $variables['field'], 'instance' => $variables['instance']));
+  if (!empty($variables['formatter_settings']['show_direction_panel'])) {
+   $content .= "<div id='show_panel_case'></div>"; 
+  }
+  /*adding js and css files for directions controls*/
+  drupal_add_js(drupal_get_path('module', 'location') . '/contrib/location_cck/js/gmap_interaction_node.js');
+  drupal_add_css(drupal_get_path('module', 'location') . '/contrib/location_cck/css/location_all_directions_control.css');
+  
+  return $content;
+}
+
+/**
+ * form returning options for travel mode
+ */
+function travel_mode_options_form($form, &$form_state) {
+	$options = array(
+	  'DRIVING' => t('Driving'),
+	  'WALKING' => t('Walking'),
+	  'BICYCLING' => t('Bicycling'),
+	  'TRANSIT' => t('Transit'),
+	);
+	$form['travel_mode'] = array(
+		'#type' => 'select',
+		'#title' => t("Mode of Travel:"),
+		'#options' => $options,
+	);
+	return $form;
+}
+
+/**
  * Alternate function to return a map with all
  * multiple values in the same map.
  */
@@ -553,7 +634,7 @@ function theme_location_cck_field_map($variables) {
       '#type' => 'gmap',
       '#gmap_settings' => $map,
     );
-    $content = drupal_render($location_map);
+    $content = "<div id='map_canvas'>" . drupal_render($location_map) . "</div><div id='directionsPanel'></div>";
   }
 
   return $content;
@@ -703,3 +784,69 @@ function location_cck_field_views_data($field) {
   }
   return $data;
 }
+
+/**
+ * Implements hook_field_formatter_settings_form().
+ */
+function location_cck_field_formatter_settings_form($field, $instance, $view_mode, $form, &$form_state) {
+  $display = $instance['display'][$view_mode];
+  $settings = $display['settings'];
+
+  $element['get_own_location_control'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Label for [Get own location]'),
+    '#description' => t('Leave this value blank to not include this control at all. If a value is entered here, a button would be shown with the text you enter above. This button when clicked will show the user\'s current location.'),
+    '#default_value' => !empty($settings['get_own_location_control']) ? $settings['get_own_location_control'] : '', 
+  );
+  $element['get_directions_control'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Label for [Get directions]'),
+    '#description' => t('Leave this value blank to not include this control at all. If a value is entered here, a button would be shown with the text you enter above. This button when clicked will display the directions from user\'s current location to the destination that this field points to.'),
+    '#default_value' => !empty($settings['get_directions_control']) ? $settings['get_directions_control'] : '', 
+  );
+  $element['show_direction_panel'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show Direction Panel'),
+    '#description' => t('Check this field if you want to display a direction panel along with the map'),
+    '#default_value' => !empty($settings['show_direction_panel']) ? $settings['show_direction_panel'] : '',
+  );
+  $element['show_travel_modes'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show Travel Modes'),
+    '#description' => t('Check this field if you want to display a dropdown showing all available travel modes'),
+    '#default_value' => $settings['show_travel_modes'],
+  );
+  
+  return $element;
+}
+
+/**
+ * Implements hook_field_formatter_settings_summary().
+ */
+function location_cck_field_formatter_settings_summary($field, $instance, $view_mode) {
+  $display = $instance['display'][$view_mode];
+  $settings = $display['settings'];
+  if ($display['type'] == 'location_all_with_directions') {
+    $summary = '';
+    if (!empty($settings['get_own_location_control'])) {
+	$summary .= "Get own location = ON, Label = $settings[get_own_location_control]<br/>";
+    }
+    if (!empty($settings['get_directions_control'])) {
+     	$summary .= "Get directions = ON, Label = $settings[get_directions_control]<br/>";
+    }
+    if (!empty($settings['show_direction_panel'])) {
+        $summary .= "Show direction panel = YES<br/>";
+    }
+    if (!empty($settings['show_travel_modes'])) {
+        $summary .= "Show Travel Modes = YES<br/>";
+    }
+    if (empty($settings['get_directions_control']) && empty($settings['get_own_location_control']) && empty($settings['travel_mode_options']) && empty($settings['show_direction_panel']) && empty($settings['show_travel_modes'])) {
+	$summary = t('No location or directions controls selected');
+    }
+    return $summary;  	
+  }
+}
+
+
+
+
